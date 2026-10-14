@@ -35,7 +35,6 @@ Pipeline de données de bout en bout qui **ingère** les trajets de taxi de Chic
                                  ▼
                Exposition : tables Parquet lisibles en SQL
 ```
-
 **Orchestration** : un DAG Airflow unique, `chicago_taxi_pipeline` :
 
 ```
@@ -61,8 +60,6 @@ ingest_bronze [x3, un par mois] → log_bronze_total → transform_silver → bu
 - Une connexion internet (images, dépendances, données de l'API)
 
 
-> Le projet a été développé et testé avec **Podman** sous Windows. Les commandes Docker équivalentes sont indiquées.
-
 ---
 
 ## 3. Lancement pas à pas
@@ -79,33 +76,46 @@ cp .env.example .env    # puis éditer .env
 
 ```bash
 # Docker
+docker compose up -d 
+
+# Docker avec build (si dockerfile est changé)
 docker compose up -d --build
 
-# Podman : construire l'image une seule fois, puis démarrer
-podman build -t mini-project-airflow:latest .
+# Podman
 podman compose up -d
+
+# Podman avec build (si dockerfile n'est pas changé)
+podman compose up -d --build 
+
 ```
 
-Le premier build prend plusieurs minutes (Java, PySpark, connecteur S3A).
+Puis ouvrir Airflow sur http://localhost:8080 (`airflow` / `airflow`).
 
-**3. Ouvrir les interfaces**
+Les résultats sont visibles dans MinIO sur http://localhost:9001 (`minioadmin` / `minioadmin`).
 
-| Interface | URL | Identifiants |
-|---|---|---|
-| Airflow | http://localhost:8080 | `airflow` / `airflow` |
-| MinIO | http://localhost:9001 | `minioadmin` / `minioadmin` |
 
-**4. Lancer le pipeline**
 
-Dans Airflow, ouvrir le DAG `chicago_taxi_pipeline` et cliquer sur **Trigger**. Durée totale : environ **10 à 15 minutes**.
+Les scripts peuvent aussi être lancés hors Airflow, par exemple :
 
-**5. Vérifier le résultat**
+```bash
+docker compose exec -w /opt/project airflow-scheduler python -m scripts.transform_silver
+```
+ou
+
+```bash
+podman exec -w /opt/project mini_project_airflow-scheduler_1 python -m scripts.transform_silver
+```
+
+**3. Lancer le pipeline**
+
+Dans Airflow, ouvrir le DAG `chicago_taxi_pipeline` et cliquer sur **Trigger**. Durée totale : environ **15 à 20 minutes**.
+
+**4. Vérifier le résultat**
 
 Dans MinIO, le bucket `datalake` contient les trois couches `bronze/`, `silver/` et `gold/`.
 
 **Arrêter le projet** : `docker compose down` (ou `podman compose down`). Les données sont conservées dans les volumes ; `down -v` les supprime.
 
-> **Podman** : après une modification du Dockerfile, faire `podman compose down` puis `up -d`. Contrairement à Docker Compose, `podman-compose up` ne recrée pas les conteneurs existants quand l'image change.
 
 ---
 
@@ -276,40 +286,4 @@ Les tables sont stockées en **Parquet**, un format standard lisible par la plup
 ├── requirements.txt
 ├── .env.example
 └── README.md
-```
-## 10. Lancement
-
-**Prérequis** : Docker ou Podman, 6 Go de RAM minimum alloués.
-
-```bash
-# Docker
-docker compose up -d 
-
-# Docker with build (if dockerfile has been changed)
-docker compose up -d --build
-
-# Podman
-podman compose up -d
-
-# Podman with build (if dockerfile has been changed)
-podman compose up -d --build 
-
-```
-
-Puis ouvrir Airflow sur http://localhost:8080 (`airflow` / `airflow`) et lancer le DAG `chicago_taxi_pipeline` avec **Trigger**.
-
-Les résultats sont visibles dans MinIO sur http://localhost:9001 (`minioadmin` / `minioadmin`), bucket `datalake`.
-
-**Arrêter** : `docker compose down` (ou `podman compose down`).
-
-
-Les scripts peuvent aussi être lancés hors Airflow, par exemple :
-
-```bash
-docker compose exec -w /opt/project airflow-scheduler python -m scripts.transform_silver
-```
-ou
-
-```bash
-podman exec -w /opt/project mini_project_airflow-scheduler_1 python -m scripts.transform_silver
 ```
