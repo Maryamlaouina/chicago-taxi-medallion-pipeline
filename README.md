@@ -33,7 +33,7 @@ Pipeline de données de bout en bout qui **ingère** les trajets de taxi de Chic
 └─────────────────────────────────────────────────────────────────────────────────────┘
                                  │
                                  ▼
-               Exposition : tables Parquet lisibles en SQL (voir §7)
+               Exposition : tables Parquet lisibles en SQL
 ```
 
 **Orchestration** : un DAG Airflow unique, `chicago_taxi_pipeline` :
