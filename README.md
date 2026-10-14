@@ -283,11 +283,17 @@ Les tables sont stockées en **Parquet**, un format standard lisible par la plup
 
 ```bash
 # Docker
+docker compose up -d 
+
+# Docker with build (if dockerfile has been changed)
 docker compose up -d --build
 
 # Podman
-podman build -t mini-project-airflow:latest .
 podman compose up -d
+
+# Podman with build (if dockerfile has been changed)
+podman compose up -d --build 
+
 ```
 
 Puis ouvrir Airflow sur http://localhost:8080 (`airflow` / `airflow`) et lancer le DAG `chicago_taxi_pipeline` avec **Trigger**.
