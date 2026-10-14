@@ -1,0 +1,111 @@
+# Pipeline Chicago Taxi : datalake local (MinIO) + orchestration (Airflow) + processing (PySpark)
+#   - Airflow : http://localhost:8080  (airflow / airflow)
+#   - MinIO   : http://localhost:9001  (minioadmin / minioadmin)
+
+
+# Configuration commune aux conteneurs Airflow (réutilisée via <<: *airflow-common)
+x-airflow-common: &airflow-common
+  build: .
+  image: mini-project-airflow:latest
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__AUTH_MANAGER: airflow.providers.fab.auth_manager.fab_auth_manager.FabAuthManager
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ""
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__EXECUTION_API_SERVER_URL: http://airflow-apiserver:8080/execution/
+    AIRFLOW__API_AUTH__JWT_SECRET: ${AIRFLOW_JWT_SECRET:-local_dev_jwt_secret}
+    AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL: "30"
+    MINIO_ENDPOINT: http://minio:9000
+    MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+    MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    SODA_APP_TOKEN: ${SODA_APP_TOKEN:-}
+    PYTHONPATH: /opt/project
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scripts:/opt/project/scripts
+    - airflow_logs:/opt/airflow/logs
+  user: "50000:0"
+  depends_on: &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_started
+
+services:
+# Stockage objet S3-compatible : socle du datalake (bronze / silver / gold)
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    container_name: minio
+    user: "0"
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+# Base de métadonnées interne d'Airflow
+  postgres:
+    image: docker.io/library/postgres:16
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  airflow-init:
+    <<: *airflow-common
+    user: "0:0"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /opt/airflow/logs && chown -R 50000:0 /opt/airflow/logs
+        /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-airflow}
+
+  airflow-apiserver:
+    <<: *airflow-common
+    command: api-server
+    ports:
+      - "8080:8080"
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-dag-processor:
+    <<: *airflow-common
+    command: dag-processor
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  minio_data:
+  postgres_data:
+  airflow_logs:
